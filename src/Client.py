@@ -37,7 +37,7 @@ class ChatClient:
 
 if __name__ == "__main__":
     IP_ADDRESS = "127.0.0.1"
-    PORT = 12345
+    PORT = 20000
     CLIENT_ID = input("Enter your client id (A, B, or C): ")
 
     client = ChatClient(IP_ADDRESS, PORT, CLIENT_ID)

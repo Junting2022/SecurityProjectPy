@@ -7,6 +7,7 @@ class Server:
         self.ip = ip
         self.port = port
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Set the SO_REUSEADDR option
         self.clients = {}  # Dictionary to store clients
 
     def start(self):
@@ -41,6 +42,7 @@ class Server:
 
 if __name__ == "__main__":
     IP_ADDRESS = "127.0.0.1"
-    PORT = 12345
+    PORT = 20000
+
     server = Server(IP_ADDRESS, PORT)
     server.start()
