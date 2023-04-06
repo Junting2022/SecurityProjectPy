@@ -78,7 +78,13 @@ if __name__ == "__main__":
 
     # Generate a CA-signed certificate and private key
     ca_generator = CertificateGenerator(ca_common_name, entity_days_valid)
-    ca_cert, ca_key = ca_generator.generate_csr_and_key()
+    ca_csr, ca_key = ca_generator.generate_csr_and_key()
+    ca_cert = ca_generator.sign_csr(ca_csr, ca_csr, ca_key)
+
+    # Save the CA certificate and private key
+    ca_cert_file = "ca_cert.pem"
+    ca_key_file = "ca_key.pem"
+    CertificateGenerator.save_to_file(ca_cert, ca_key, ca_cert_file, ca_key_file)
 
     # Generate and save certificates and private keys for each entity
     for entity in entities:
@@ -90,3 +96,4 @@ if __name__ == "__main__":
         key_file = f"{entity}_key.pem"
 
         generator.save_to_file(cert, private_key, cert_file, key_file)
+
