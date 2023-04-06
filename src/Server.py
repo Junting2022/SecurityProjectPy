@@ -67,8 +67,8 @@ class Server:
 if __name__ == "__main__":
     IP_ADDRESS = "127.0.0.1"
     PORT = 20000
-    SERVER_CERT = "server_cert.pem"
-    SERVER_KEY = "server_key.pem"
+    SERVER_CERT = "key/S_cert.pem"
+    SERVER_KEY = "key/S_key.pem"
 
     server = Server(IP_ADDRESS, PORT, SERVER_CERT, SERVER_KEY)
     server.start()
