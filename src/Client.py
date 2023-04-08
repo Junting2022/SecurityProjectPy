@@ -1,10 +1,15 @@
 import socket
-import ssl
 import threading
+import time
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
+
+from Cryp import *
 
 
 class ChatClient:
-    def __init__(self, ip, port, client_id, cert_file, key_file, ca_file):
+    def __init__(self, ip, port, client_id, cert_file, key_file, ca_file, server_cert_file):
         self.ip = ip
         self.port = port
         self.client_id = client_id
@@ -12,22 +17,38 @@ class ChatClient:
         self.cert_file = cert_file
         self.key_file = key_file
         self.ca_file = ca_file
+        self.server_cert_file = server_cert_file
 
     def connect(self):
-        context = ssl.create_default_context(cafile=self.ca_file)  # Wrap the client socket with TLS
-        context.load_cert_chain(certfile=self.cert_file, keyfile=self.key_file)
 
-        self.client = context.wrap_socket(self.client)
         self.client.connect((self.ip, self.port))
+        time.sleep(0.1)
+        self.client.send(self.client_id.encode())  # Send client_id to the server
+        print("connecting to server......")
+        while True:
+            try:
+                msg = self.client.recv(1)  # Receive messages from the server
+                if msg:
+                    print(f"Connected to server at {self.ip}:{self.port}, starting handshake")
+                    input()
+                    # step 1 send certificate and signature
+                    self.client.send(self.step_one())
+                    print("step 1 done, you have send certificate and signature")
+                    msg = None
+                    msg = self.client.recv(1)
+                    if msg:
+                        print("step 2 done, certificate and signature are valid")
+                        input()
+                        thread = threading.Thread(target=self.handle_server)
+                        thread.start()
 
-        self.client.send(self.client_id.encode("utf-8"))
-        self.client.connect((self.ip, self.port))
-        self.client.send(self.client_id.encode("utf-8"))  # Send client_id to the server
-        print(f"Connected to server at {self.ip}:{self.port}")
+                    break
+            except Exception as e:
+                print(f"Error: {e}")
+                self.client.close()
+                break
 
-        input_thread = threading.Thread(target=self.send_message)
-        input_thread.start()
-
+    def handle_server(self):
         while True:
             try:
                 msg = self.client.recv(1024).decode("utf-8")  # Receive messages from the server
@@ -39,6 +60,32 @@ class ChatClient:
                 self.client.close()
                 break
 
+    def step_one(self):
+        # send the CA
+        with open(self.cert_file, 'rb') as f:
+            # open file in binary mode
+            cert_data = f.read()
+            # Load the certificate
+            cert = load_pem_x509_certificate(cert_data)
+            # Convert the certificate to DER format
+            der_cert_data = cert.public_bytes(serialization.Encoding.DER)
+        # sign the DER formatted certificate
+        with open(self.key_file, 'rb') as f:
+            key_data = f.read()
+            private_key = load_pem_private_key(key_data, password=None)
+            signature = sign_message(private_key, der_cert_data)
+        # Load the server's certificate
+        with open(self.server_cert_file, 'rb') as f:
+            server_cert_data = f.read()
+            server_cert = load_pem_x509_certificate(server_cert_data)
+
+        # Extract the server's public key
+        server_public_key = server_cert.public_key()
+        msg = der_cert_data + signature
+        # Encrypt the message using the server's public key and a symmetric key
+        encrypted_data = encrypt_asymmetric_with_symmetric_key(msg, server_public_key)
+        return encrypted_data
+
     def send_message(self):
         while True:
             recipient_id = input("Enter recipient id (A, B, or C): ")
@@ -47,12 +94,18 @@ class ChatClient:
 
 
 if __name__ == "__main__":
-    IP_ADDRESS = "127.0.0.1"
-    PORT = 20000
-    CLIENT_ID = input("Enter your client id (A, B, or C): ")
-    CLIENT_CERT = f"{CLIENT_ID}_cert.pem"
-    CLIENT_KEY = f"{CLIENT_ID}_key.pem"
-    CLIENT_CA = f"{CLIENT_ID}_ca.pem"
+    while True:
+        try:
+            IP_ADDRESS = "127.0.0.1"
+            PORT = 20002
+            CLIENT_ID = input("Enter your client id (A, B, or C): ")
+            CLIENT_CERT = f"key/{CLIENT_ID}_cert.pem"
+            CLIENT_KEY = f"key/{CLIENT_ID}_key.pem"
+            CLIENT_CA = f"key/ca_cert.pem"
+            SERVER_CERT = f"key/S_cert.pem"
 
-    client = ChatClient(IP_ADDRESS, PORT, CLIENT_ID, CLIENT_CERT, CLIENT_KEY, CLIENT_CA)
-    client.connect()
+            client = ChatClient(IP_ADDRESS, PORT, CLIENT_ID, CLIENT_CERT, CLIENT_KEY, CLIENT_CA, SERVER_CERT)
+            client.connect()
+        except Exception as e:
+            print(f"Error: {e}, please try again")
+            continue
