@@ -1,14 +1,13 @@
 import hashlib
 import os
 
-from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric import utils
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.padding import PKCS7
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from cryptography.x509 import load_pem_x509_certificate, load_der_x509_certificate
-
 
 
 # Hash a message using SHA-256
@@ -88,12 +87,15 @@ def sign_message(private_key, message):
 
 
 # Verify a signature using RSA and SHA-256
-def verify_signature(client_public_key, der_cert_data, signature):
-    # Verify the signature using the client's public key
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric import padding
+
+
+def verify_signature(public_key, message, signature):
     try:
-        client_public_key.verify(
+        public_key.verify(
             signature,
-            der_cert_data,
+            message,
             padding.PSS(
                 mgf=padding.MGF1(hashes.SHA256()),
                 salt_length=padding.PSS.MAX_LENGTH
@@ -101,9 +103,10 @@ def verify_signature(client_public_key, der_cert_data, signature):
             hashes.SHA256()
         )
         print("Signature is valid.")
+        return True
     except InvalidSignature:
         print("Signature is invalid.")
-        # Handle the invalid signature case, e.g., disconnect the client or raise an exception
+        return False
 
 
 # Verify a certificate
@@ -172,3 +175,18 @@ def pad(data, block_size):
     padder = PKCS7(block_size * 8).padder()
     padded_data = padder.update(data) + padder.finalize()
     return padded_data
+
+
+def load_private_key(key_file):
+    with open(key_file, "rb") as f:
+        key_data = f.read()
+    private_key = load_pem_private_key(key_data, password=None)
+    return private_key
+
+
+def load_public_key(cert_file):
+    with open(cert_file, "rb") as f:
+        cert_data = f.read()
+    cert = load_pem_x509_certificate(cert_data)
+    public_key = cert.public_key()
+    return public_key

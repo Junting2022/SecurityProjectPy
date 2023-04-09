@@ -1,10 +1,7 @@
 import socket
 import threading
 import time
-
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
-
 from Cryp import *
 
 
@@ -32,12 +29,14 @@ class ChatClient:
                     print(f"Connected to server at {self.ip}:{self.port}, starting handshake")
                     input()
                     # step 1 send certificate and signature
-                    self.client.send(self.step_one())
-                    print("step 1 done, you have send certificate and signature")
+                    self.step_one()
                     msg = None
-                    msg = self.client.recv(1)
+                    msg = self.client.recv(1024)
                     if msg:
                         print("step 2 done, certificate and signature are valid")
+                        input()
+                        # step 3 : read random number and verify signature
+                        number_one = self.step_three(msg)
                         input()
                         thread = threading.Thread(target=self.handle_server)
                         thread.start()
@@ -70,21 +69,37 @@ class ChatClient:
             # Convert the certificate to DER format
             der_cert_data = cert.public_bytes(serialization.Encoding.DER)
         # sign the DER formatted certificate
-        with open(self.key_file, 'rb') as f:
-            key_data = f.read()
-            private_key = load_pem_private_key(key_data, password=None)
-            signature = sign_message(private_key, der_cert_data)
-        # Load the server's certificate
-        with open(self.server_cert_file, 'rb') as f:
-            server_cert_data = f.read()
-            server_cert = load_pem_x509_certificate(server_cert_data)
-
-        # Extract the server's public key
-        server_public_key = server_cert.public_key()
+        private_key = load_private_key(self.key_file)
+        signature = sign_message(private_key, der_cert_data)
+        # Load the server's public key
+        server_public_key = load_public_key(self.server_cert_file)
         msg = der_cert_data + signature
         # Encrypt the message using the server's public key and a symmetric key
         encrypted_data = encrypt_asymmetric_with_symmetric_key(msg, server_public_key)
-        return encrypted_data
+        self.client.send(encrypted_data)
+        print("step 1 done, you have send certificate and signature")
+
+    def step_three(self, msg):
+        try:
+            # split the message into the encrypted number and signature
+            encrypt_number = msg[:256]
+            signature = msg[256:]
+
+            # decrypt the number using the private key
+            private_key = load_private_key(self.key_file)
+            number = decrypt_asymmetric(private_key, encrypt_number)
+
+            # verify the signature
+            server_public_key = load_public_key(self.server_cert_file)
+            is_valid = verify_signature(server_public_key, encrypt_number, signature)
+
+            if not is_valid:
+                # Handle the invalid signature case
+                raise Exception("Invalid Server signature")
+            print("step 3 done, you have read random number and verify signature")
+            return number
+        except Exception as e:
+            print(f"Error: {e}")
 
     def send_message(self):
         while True:
