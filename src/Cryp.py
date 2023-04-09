@@ -16,7 +16,7 @@ def hash_message(message):
     return hash_object.digest()
 
 
-# Asymmetric encryption using RSA
+# Asymmetric encryption using RSA 2048
 def encrypt_asymmetric(public_key, message):
     if isinstance(public_key, rsa.RSAPublicKey):
         encrypted_message = public_key.encrypt(
@@ -32,7 +32,7 @@ def encrypt_asymmetric(public_key, message):
         raise ValueError("The public_key provided is not an RSA public key.")
 
 
-# Asymmetric decryption using RSA
+# Asymmetric decryption using RSA 2048
 def decrypt_asymmetric(private_key, encrypted_message):
     if isinstance(private_key, rsa.RSAPrivateKey):
         decrypted_message = private_key.decrypt(
@@ -48,6 +48,7 @@ def decrypt_asymmetric(private_key, encrypted_message):
         raise ValueError("The private_key provided is not an RSA private key.")
 
 
+# AES decryption using a symmetric key
 def decrypt_symmetric(encrypted_message, symmetric_key, iv):
     cipher = Cipher(algorithms.AES(symmetric_key), modes.CBC(iv))
     decryptor = cipher.decryptor()
@@ -57,6 +58,7 @@ def decrypt_symmetric(encrypted_message, symmetric_key, iv):
     return message
 
 
+# AES encryption using a symmetric key
 def encrypt_symmetric(message, symmetric_key):
     # Encrypt the message using the symmetric key
     # Usage:
