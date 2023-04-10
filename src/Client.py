@@ -15,6 +15,8 @@ class ChatClient:
         self.key_file = key_file
         self.ca_file = ca_file
         self.server_cert_file = server_cert_file
+        self.number = {}
+        self.stats = 0
 
     def connect(self):
 
@@ -33,10 +35,14 @@ class ChatClient:
                     msg = None
                     msg = self.client.recv(1024)
                     if msg:
+                        self.stats = 2
                         print("step 2 done, certificate and signature are valid")
                         input()
                         # step 3 : read random number and verify signature
-                        number_one = self.step_three(msg)
+                        self.step_three(msg)
+                        input()
+                        # step 4 : send another random number and signature
+                        self.step_four()
                         input()
                         thread = threading.Thread(target=self.handle_server)
                         thread.start()
@@ -77,6 +83,7 @@ class ChatClient:
         # Encrypt the message using the server's public key and a symmetric key
         encrypted_data = encrypt_asymmetric_with_symmetric_key(msg, server_public_key)
         self.client.send(encrypted_data)
+        self.stats = 1
         print("step 1 done, you have send certificate and signature")
 
     def step_three(self, msg):
@@ -87,7 +94,7 @@ class ChatClient:
 
             # decrypt the number using the private key
             private_key = load_private_key(self.key_file)
-            number = decrypt_asymmetric(private_key, encrypt_number)
+            number_one = decrypt_asymmetric(private_key, encrypt_number)
 
             # verify the signature
             server_public_key = load_public_key(self.server_cert_file)
@@ -96,8 +103,32 @@ class ChatClient:
             if not is_valid:
                 # Handle the invalid signature case
                 raise Exception("Invalid Server signature")
+            self.number[1] = number_one
+            self.stats = 3
             print("step 3 done, you have read random number and verify signature")
-            return number
+        except Exception as e:
+            print(f"Error: {e}")
+
+    def step_four(self):
+        try:
+            # generate a random number
+            number_two = os.urandom(16)
+            self.number[2] = number_two
+
+            # encrypt the two numbers using the server's public key
+            numbers = self.number[1] + self.number[2]
+            server_public_key = load_public_key(self.server_cert_file)
+            encrypt_numbers = encrypt_asymmetric(server_public_key, numbers)
+
+            # sign the numbers
+            private_key = load_private_key(self.key_file)
+            signature = sign_message(private_key, encrypt_numbers)
+
+            # send the encrypted number and signature
+            msg = encrypt_numbers + signature
+            self.client.send(msg)
+            self.stats = 4
+            print("step 4 done, you have send random number and signature")
         except Exception as e:
             print(f"Error: {e}")
 

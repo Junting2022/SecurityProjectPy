@@ -45,15 +45,20 @@ class Server:
             try:
                 # step 2 : Check certificate and signature
                 msg = conn.recv(2048)
-                self.clients[client_id]["stats"] = 1
-                self.step_two(client_id, msg)
-                if self.clients[client_id]["stats"] == 2:
-                    print("step 2 done, certificate and signature are valid")
-                    # step 3 : send random number and signature
-                    self.step_three(client_id, conn)
-                    print("step 3 done, you have send random number and signature")
-                    thread = threading.Thread(target=self.handle_client, args=(client_id, conn,))
-                    thread.start()
+                if msg:
+                    self.clients[client_id]["stats"] = 1
+                    self.step_two(client_id, msg)
+                    if self.clients[client_id]["stats"] == 2:
+                        # step 3 : send random number and signature
+                        self.step_three(client_id, conn)
+                        # step 4 : receive random number and signature
+                        msg = conn.recv(2048)
+                        if msg:
+                            self.step_four(client_id, msg)
+                            if self.clients[client_id]["stats"] == 4:
+                                thread = threading.Thread(target=self.handle_client, args=(client_id, conn,))
+                                thread.start()
+
                 break
 
             except Exception as e:
@@ -93,6 +98,7 @@ class Server:
                 raise Exception("Invalid Client signature")
             self.clients[client_id]["public_key"] = client_public_key
             self.clients[client_id]["stats"] = 2
+            print("step 2 done, certificate and signature are valid")
         except Exception as e:
             print(f"Error: {e}")
 
@@ -100,6 +106,8 @@ class Server:
         # Generate a random 16-byte number
         try:
             number_one = os.urandom(16)
+            self.clients[client_id]["numbers"] = {}
+            self.clients[client_id]["numbers"][1] = number_one
             # Encrypt the random number using the client's public key
             encrypt_number = encrypt_asymmetric(self.clients[client_id]["public_key"], number_one)
         except Exception as e:
@@ -120,10 +128,39 @@ class Server:
         # Send the encrypted random number and its signature to the client
         try:
             conn.send(encrypt_number + signature)
+            self.clients[client_id]["stats"] = 3
+            print("step 3 done, you have send random number and signature")
         except Exception as e:
             # Print the error message if sending fails
             print(f"Error sending encrypted data and signature: {e}")
             return
+
+    def step_four(self, client_id, msg):
+        try:
+            # split the message into the encrypted number and signature
+            encrypt_number = msg[:256]
+            signature = msg[256:]
+
+            # decrypt the number using the private key
+            private_key = load_private_key(self.key_file)
+            numbers = decrypt_asymmetric(private_key, encrypt_number)
+
+            # verify the signature
+            client_public_key = self.clients[client_id]["public_key"]
+            is_valid = verify_signature(client_public_key, encrypt_number, signature)
+
+            if not is_valid:
+                # Handle the invalid signature case
+                raise Exception("Invalid Server signature")
+            number_one = numbers[:16]
+            number_two = numbers[16:]
+            if number_one != self.clients[client_id]["numbers"][1]:
+                raise Exception("Invalid number")
+            self.clients[client_id]["numbers"][2] = number_two
+            self.clients[client_id]["stats"] = 4
+            print("step 4 done, you have varify number one and signature")
+        except Exception as e:
+            print(f"Error: {e}")
 
 
 if __name__ == "__main__":
