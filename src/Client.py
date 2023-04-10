@@ -32,8 +32,7 @@ class ChatClient:
                     input()
                     # step 1 send certificate and signature
                     self.step_one()
-                    msg = None
-                    msg = self.client.recv(1024)
+                    msg = self.client.recv(2048)
                     if msg:
                         self.stats = 2
                         print("step 2 done, certificate and signature are valid")
@@ -44,8 +43,15 @@ class ChatClient:
                         # step 4 : send another random number and signature
                         self.step_four()
                         input()
-                        thread = threading.Thread(target=self.handle_server)
-                        thread.start()
+                        # step 5 : read number two and verify signature
+                        msg = self.client.recv(2048)
+                        if msg:
+                            self.step_five(msg)
+                            if self.stats == 5:
+                                input()
+                                # start a thread to handle the server
+                                thread = threading.Thread(target=self.handle_server)
+                                thread.start()
 
                     break
             except Exception as e:
@@ -129,6 +135,30 @@ class ChatClient:
             self.client.send(msg)
             self.stats = 4
             print("step 4 done, you have send random number and signature")
+        except Exception as e:
+            print(f"Error: {e}")
+
+    def step_five(self, msg):
+        try:
+            # split the message into the encrypted number and signature
+            encrypt_number = msg[:256]
+            signature = msg[256:]
+
+            # decrypt the number using the private key
+            private_key = load_private_key(self.key_file)
+            number_two = decrypt_asymmetric(private_key, encrypt_number)
+
+            # verify the signature
+            server_public_key = load_public_key(self.server_cert_file)
+            is_valid = verify_signature(server_public_key, encrypt_number, signature)
+
+            if not is_valid:
+                # Handle the invalid signature case
+                raise Exception("Invalid Server signature")
+            if number_two != self.number[2]:
+                raise Exception("Invalid number")
+            self.stats = 5
+            print("step 5 done, you have verify number two signature")
         except Exception as e:
             print(f"Error: {e}")
 

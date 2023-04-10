@@ -56,6 +56,8 @@ class Server:
                         if msg:
                             self.step_four(client_id, msg)
                             if self.clients[client_id]["stats"] == 4:
+                                # step 5 : send number two and signature
+                                self.step_five(client_id, conn)
                                 thread = threading.Thread(target=self.handle_client, args=(client_id, conn,))
                                 thread.start()
 
@@ -158,9 +160,39 @@ class Server:
                 raise Exception("Invalid number")
             self.clients[client_id]["numbers"][2] = number_two
             self.clients[client_id]["stats"] = 4
-            print("step 4 done, you have varify number one and signature")
+            print("step 4 done, you have verify number one and signature")
         except Exception as e:
             print(f"Error: {e}")
+
+    def step_five(self, client_id, conn):
+        try:
+            number_two = self.clients[client_id]["numbers"][2]
+            # Encrypt the random number using the client's public key
+            encrypt_number = encrypt_asymmetric(self.clients[client_id]["public_key"], number_two)
+        except Exception as e:
+            # Print the error message if encryption fails
+            print(f"Error encrypting number_one: {e}")
+            return
+
+        # Load the server's private key
+        try:
+            server_private_key = load_private_key(self.key_file)
+            # Sign the random number using the server's private key
+            signature = sign_message(server_private_key, encrypt_number)
+        except Exception as e:
+            # Print the error message if signing fails
+            print(f"Error signing number_one: {e}")
+            return
+
+        # Send the encrypted random number and its signature to the client
+        try:
+            conn.send(encrypt_number + signature)
+            self.clients[client_id]["stats"] = 5
+            print("step 5 done, you have send number two and signature")
+        except Exception as e:
+            # Print the error message if sending fails
+            print(f"Error sending encrypted data and signature: {e}")
+            return
 
 
 if __name__ == "__main__":
