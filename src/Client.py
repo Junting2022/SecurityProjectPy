@@ -1,5 +1,4 @@
 import socket
-import threading
 import time
 from cryptography.hazmat.primitives import serialization
 from Cryp import *
@@ -48,16 +47,48 @@ class ChatClient:
                         if msg:
                             self.step_five(msg)
                             if self.stats == 5:
+                                print("handshake done, start establishing symmetric key")
                                 input()
-                                # start a thread to handle the server
-                                thread = threading.Thread(target=self.handle_server)
-                                thread.start()
+                                # step 6 : establish symmetric key
+                                self.establish_symmetric_key()
 
-                    break
+                break
             except Exception as e:
                 print(f"Error: {e}")
                 self.client.close()
                 break
+
+    def establish_symmetric_key(self):
+        # step 6 : establish symmetric key
+        key_numbers = {self.client_id: os.urandom(16)}
+        # send symmetric number to server
+        first_chat_member_id = "B"  # input("Enter the first chat member's ID: ")
+        second_chat_member_id = "C"  # input("Enter the second chat member's ID: ")
+        self.send_symmetric_number(first_chat_member_id, key_numbers[self.client_id])
+        self.send_symmetric_number(second_chat_member_id, key_numbers[self.client_id])
+        # receive symmetric number from server
+        # receive symmetric number from server
+        while len(key_numbers) < 2:
+            # Receive the length of the sender_id
+            sender_id_len = int.from_bytes(self.client.recv(2), 'big')
+            # Receive the sender_id using the received length
+            sender_id = self.client.recv(sender_id_len).decode("utf-8")
+            encrypted_number = self.client.recv(256)
+            signature = self.client.recv(256)
+
+            # Verify the signature
+            server_public_key = load_public_key(self.server_cert_file)
+            is_valid = verify_signature(server_public_key, encrypted_number, signature)
+            if not is_valid:
+                raise Exception("Invalid signature")
+            private_key = load_private_key(self.key_file)
+            number = decrypt_asymmetric(private_key, encrypted_number)
+            key_numbers[sender_id] = number
+            print(f"Received {number} from {sender_id}")
+        # start chat
+        symmetric_key = hashlib.sha256(sum(key_numbers.values())).digest()
+        print(f"Symmetric key: {symmetric_key}")
+        self.handle_server()
 
     def handle_server(self):
         while True:
@@ -162,6 +193,18 @@ class ChatClient:
         except Exception as e:
             print(f"Error: {e}")
 
+    def send_symmetric_number(self, recipient_id, number):
+        # Encrypt and sign the number, then send it to the specified recipient
+        server_public_key = load_public_key(self.server_cert_file)
+        # Encrypt the number using the server's public key
+        encrypted_number = encrypt_asymmetric(server_public_key, number)
+        # Sign the encrypted number
+        private_key = load_private_key(self.key_file)
+        signature = sign_message(private_key, encrypted_number)
+        # Send the recipient_id and the encrypted number and signature to the recipient as separate messages
+        self.client.send(recipient_id.encode("utf-8"))
+        self.client.send(encrypted_number + signature)
+
     def send_message(self):
         while True:
             recipient_id = input("Enter recipient id (A, B, or C): ")
@@ -170,18 +213,14 @@ class ChatClient:
 
 
 if __name__ == "__main__":
-    while True:
-        try:
-            IP_ADDRESS = "127.0.0.1"
-            PORT = 20002
-            CLIENT_ID = input("Enter your client id (A, B, or C): ")
-            CLIENT_CERT = f"key/{CLIENT_ID}_cert.pem"
-            CLIENT_KEY = f"key/{CLIENT_ID}_key.pem"
-            CLIENT_CA = f"key/ca_cert.pem"
-            SERVER_CERT = f"key/S_cert.pem"
+    IP_ADDRESS = "127.0.0.1"
+    PORT = 20002
+    CLIENT_ID = input("Enter your client id (A, B, or C): ")
+    CLIENT_CERT = f"key/{CLIENT_ID}_cert.pem"
+    CLIENT_KEY = f"key/{CLIENT_ID}_key.pem"
+    CLIENT_CA = f"key/ca_cert.pem"
+    SERVER_CERT = f"key/S_cert.pem"
 
-            client = ChatClient(IP_ADDRESS, PORT, CLIENT_ID, CLIENT_CERT, CLIENT_KEY, CLIENT_CA, SERVER_CERT)
-            client.connect()
-        except Exception as e:
-            print(f"Error: {e}, please try again")
-            continue
+    client = ChatClient(IP_ADDRESS, PORT, CLIENT_ID, CLIENT_CERT, CLIENT_KEY, CLIENT_CA, SERVER_CERT)
+    client.connect()
+

@@ -58,8 +58,9 @@ class Server:
                             if self.clients[client_id]["stats"] == 4:
                                 # step 5 : send number two and signature
                                 self.step_five(client_id, conn)
-                                thread = threading.Thread(target=self.handle_client, args=(client_id, conn,))
-                                thread.start()
+                                print(f"{client_id} handshake done")
+                                # step 6 : establish symmetric key
+                                self.establish_symmetric_key(client_id, conn)
 
                 break
 
@@ -67,6 +68,28 @@ class Server:
                 print(f"Error: {e}")
                 conn.close()
                 break
+
+    def establish_symmetric_key(self, client_id, conn):
+        # Receive and forward encrypted numbers between clients
+        while True:
+            count = 0
+            while count < 2:
+                try:
+                    recipient_id = conn.recv(1024).decode("utf-8")  # Receive recipient_id from client
+                    encrypted_number_msg = conn.recv(1024)  # Receive encrypted_number_msg from client
+                    print(f"Encrypted number message from {client_id} to {recipient_id}")
+                    if recipient_id in self.clients:
+                        self.clients[recipient_id]["conn"].send(recipient_id.encode("utf-8"))  # Forward recipient_id to the recipient
+                        self.clients[recipient_id]["conn"].send(encrypted_number_msg)  # Forward encrypted_number_msg to the recipient
+                        count += 1
+                except Exception as e:
+                    print(f"Error: {e}")
+                    break
+            if count == 2:
+                self.handle_client(client_id, conn)
+                break
+
+
 
     def handle_client(self, client_id, conn):
 
