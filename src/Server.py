@@ -79,7 +79,7 @@ class Server:
                     encrypted_number_msg = conn.recv(1024)  # Receive encrypted_number_msg from client
                     print(f"Encrypted number message from {client_id} to {recipient_id}")
                     if recipient_id in self.clients:
-                        self.clients[recipient_id]["conn"].send(recipient_id.encode("utf-8"))  # Forward recipient_id to the recipient
+                        self.clients[recipient_id]["conn"].send(client_id.encode("utf-8"))  # Forward recipient_id to the recipient
                         self.clients[recipient_id]["conn"].send(encrypted_number_msg)  # Forward encrypted_number_msg to the recipient
                         count += 1
                 except Exception as e:

@@ -1,4 +1,5 @@
 import socket
+import threading
 import time
 from cryptography.hazmat.primitives import serialization
 from Cryp import *
@@ -14,8 +15,9 @@ class ChatClient:
         self.key_file = key_file
         self.ca_file = ca_file
         self.server_cert_file = server_cert_file
-        self.number = {}
+        self.handshake_number = {}
         self.stats = 0
+        self.symmetric_key_number = {}
 
     def connect(self):
 
@@ -48,8 +50,10 @@ class ChatClient:
                             self.step_five(msg)
                             if self.stats == 5:
                                 print("handshake done, start establishing symmetric key")
-                                input()
                                 # step 6 : establish symmetric key
+                                # start a thread to receive key numbers
+                                receiveThread = threading.Thread(target=self.receive_symmetric_number)
+                                receiveThread.start()
                                 self.establish_symmetric_key()
 
                 break
@@ -58,37 +62,44 @@ class ChatClient:
                 self.client.close()
                 break
 
-    def establish_symmetric_key(self):
-        # step 6 : establish symmetric key
-        key_numbers = {self.client_id: os.urandom(16)}
-        # send symmetric number to server
-        first_chat_member_id = "B"  # input("Enter the first chat member's ID: ")
-        second_chat_member_id = "C"  # input("Enter the second chat member's ID: ")
-        self.send_symmetric_number(first_chat_member_id, key_numbers[self.client_id])
-        self.send_symmetric_number(second_chat_member_id, key_numbers[self.client_id])
-        # receive symmetric number from server
-        # receive symmetric number from server
-        while len(key_numbers) < 2:
-            # Receive the length of the sender_id
-            sender_id_len = int.from_bytes(self.client.recv(2), 'big')
+    def receive_symmetric_number(self):
+        self.symmetric_key_number[self.client_id] = os.urandom(16)
+        while len(self.symmetric_key_number) < 3:
             # Receive the sender_id using the received length
-            sender_id = self.client.recv(sender_id_len).decode("utf-8")
-            encrypted_number = self.client.recv(256)
-            signature = self.client.recv(256)
+            sender_id = self.client.recv(1024).decode("utf-8")
+            encrypted_number_msg = self.client.recv(1024)
+            # split the message into the encrypted number and signature
+            encrypted_number = encrypted_number_msg[:256]
+            signature = encrypted_number_msg[256:]
 
             # Verify the signature
-            server_public_key = load_public_key(self.server_cert_file)
+            sender_cert = f"key/{sender_id}_cert.pem"
+            server_public_key = load_public_key(sender_cert)
             is_valid = verify_signature(server_public_key, encrypted_number, signature)
             if not is_valid:
                 raise Exception("Invalid signature")
             private_key = load_private_key(self.key_file)
             number = decrypt_asymmetric(private_key, encrypted_number)
-            key_numbers[sender_id] = number
+            self.symmetric_key_number[sender_id] = number
             print(f"Received {number} from {sender_id}")
         # start chat
-        symmetric_key = hashlib.sha256(sum(key_numbers.values())).digest()
+        # Sort the bytes in ascending order
+        sorted_bytes = sorted(self.symmetric_key_number.values())
+        # Concatenate the sorted bytes to form a single bytes object
+        bytes_object = b''.join(sorted_bytes)
+        symmetric_key = hashlib.sha256(bytes_object).digest()
         print(f"Symmetric key: {symmetric_key}")
         self.handle_server()
+
+    def establish_symmetric_key(self):
+        # step 6 : establish symmetric key
+        # send symmetric number to server
+        input()
+        first_chat_member_id = input("Enter the first chat member's ID: ")
+        second_chat_member_id = input("Enter the second chat member's ID: ")
+        self.send_symmetric_number(first_chat_member_id, self.symmetric_key_number[self.client_id])
+        self.send_symmetric_number(second_chat_member_id, self.symmetric_key_number[self.client_id])
+        # receive symmetric number from server
 
     def handle_server(self):
         while True:
@@ -140,7 +151,7 @@ class ChatClient:
             if not is_valid:
                 # Handle the invalid signature case
                 raise Exception("Invalid Server signature")
-            self.number[1] = number_one
+            self.handshake_number[1] = number_one
             self.stats = 3
             print("step 3 done, you have read random number and verify signature")
         except Exception as e:
@@ -150,10 +161,10 @@ class ChatClient:
         try:
             # generate a random number
             number_two = os.urandom(16)
-            self.number[2] = number_two
+            self.handshake_number[2] = number_two
 
             # encrypt the two numbers using the server's public key
-            numbers = self.number[1] + self.number[2]
+            numbers = self.handshake_number[1] + self.handshake_number[2]
             server_public_key = load_public_key(self.server_cert_file)
             encrypt_numbers = encrypt_asymmetric(server_public_key, numbers)
 
@@ -186,7 +197,7 @@ class ChatClient:
             if not is_valid:
                 # Handle the invalid signature case
                 raise Exception("Invalid Server signature")
-            if number_two != self.number[2]:
+            if number_two != self.handshake_number[2]:
                 raise Exception("Invalid number")
             self.stats = 5
             print("step 5 done, you have verify number two signature")
@@ -195,9 +206,11 @@ class ChatClient:
 
     def send_symmetric_number(self, recipient_id, number):
         # Encrypt and sign the number, then send it to the specified recipient
-        server_public_key = load_public_key(self.server_cert_file)
-        # Encrypt the number using the server's public key
-        encrypted_number = encrypt_asymmetric(server_public_key, number)
+        recipient_cert = f"key/{recipient_id}_cert.pem"
+        # Load the recipient's public key
+        recipient_public_key = load_public_key(recipient_cert)
+        # Encrypt the number using the recipient public key
+        encrypted_number = encrypt_asymmetric(recipient_public_key, number)
         # Sign the encrypted number
         private_key = load_private_key(self.key_file)
         signature = sign_message(private_key, encrypted_number)
@@ -223,4 +236,3 @@ if __name__ == "__main__":
 
     client = ChatClient(IP_ADDRESS, PORT, CLIENT_ID, CLIENT_CERT, CLIENT_KEY, CLIENT_CA, SERVER_CERT)
     client.connect()
-
