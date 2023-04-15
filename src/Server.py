@@ -1,5 +1,7 @@
 import socket
 import threading
+import time
+
 from Cryp import *
 
 
@@ -35,7 +37,8 @@ class Server:
                 shackThread = threading.Thread(target=self.handshake, args=(client_id, conn,))
                 shackThread.start()
                 print(f"{client_id} starting handshake")
-            except:
+            except Exception as e:
+                print(f"Error: {e}")
                 if conn:
                     conn.close()
                 continue
@@ -71,42 +74,50 @@ class Server:
 
     def establish_symmetric_key(self, client_id, conn):
         # Receive and forward encrypted numbers between clients
-        while True:
-            count = 0
-            while count < 2:
-                try:
-                    recipient_id = conn.recv(1024).decode("utf-8")  # Receive recipient_id from client
-                    encrypted_number_msg = conn.recv(1024)  # Receive encrypted_number_msg from client
-                    print(f"Encrypted number message from {client_id} to {recipient_id}")
-                    if recipient_id in self.clients:
-                        self.clients[recipient_id]["conn"].send(client_id.encode("utf-8"))  # Forward recipient_id to the recipient
-                        self.clients[recipient_id]["conn"].send(encrypted_number_msg)  # Forward encrypted_number_msg to the recipient
-                        count += 1
-                except Exception as e:
-                    print(f"Error: {e}")
-                    break
-            if count == 2:
-                self.handle_client(client_id, conn)
-                break
-
-
-
-    def handle_client(self, client_id, conn):
-
-        while True:
+        count = 0
+        while count < 2:
             try:
-                msg = conn.recv(1024).decode("utf-8")  # Receive message from client
-                recipient_id, message = msg.split(":", 1)  # Extract recipient id and message
-                print(f"Message from {client_id} to {recipient_id}: {message}")
+                recipient_id = conn.recv(1024).decode("utf-8")  # Receive recipient_id from client
+                encrypted_number_msg = conn.recv(1024)  # Receive encrypted_number_msg from client
+                print(f"Encrypted number message from {client_id} to {recipient_id}")
                 if recipient_id in self.clients:
                     self.clients[recipient_id]["conn"].send(
-                        f"{client_id}: {message}".encode("utf-8"))  # Forward message to the recipient
-
+                        client_id.encode("utf-8"))  # Forward recipient_id to the recipient
+                    self.clients[recipient_id]["conn"].send(
+                        encrypted_number_msg)  # Forward encrypted_number_msg to the recipient
+                    count += 1
             except Exception as e:
                 print(f"Error: {e}")
-                conn.close()
-                del self.clients[client_id]
                 break
+
+        thread = threading.Thread(target=self.handle_client, args=(client_id, conn,))
+        thread.start()
+
+    def handle_client(self, client_id, conn):
+        try:
+            print(f"{client_id} is now joined the chat")
+            # Receive and forward encrypted numbers between clients
+            while True:
+                print(f"waiting message from {client_id}")
+                recipient_id = conn.recv(1024).decode("utf-8")  # Receive recipient_id from client
+
+                # Receive the length of the encrypted message
+                encrypted_msg_len = int.from_bytes(conn.recv(4), byteorder='big')
+
+                encrypted_number_msg = conn.recv(encrypted_msg_len)  # Receive encrypted_number_msg from client
+                iv = conn.recv(16)
+                print(f"Encrypted message from {client_id} to {recipient_id}")
+                if recipient_id in self.clients:
+                    self.clients[recipient_id]["conn"].send(
+                        client_id.encode("utf-8"))  # Forward recipient_id to the recipient
+                    time.sleep(0.1)
+                    self.clients[recipient_id]["conn"].send(
+                        encrypted_number_msg)  # Forward encrypted_number_msg to the recipient
+                    time.sleep(0.1)
+                    self.clients[recipient_id]["conn"].send(iv)
+        except Exception as e:
+            print(f"Error while handling client {client_id}: {e}")
+            conn.close()
 
     def step_two(self, client_id, msg):
         try:
@@ -220,7 +231,7 @@ class Server:
 
 if __name__ == "__main__":
     IP_ADDRESS = "127.0.0.1"
-    PORT = 20002
+    PORT = 20005
     SERVER_CERT = "key/S_cert.pem"
     SERVER_KEY = "key/S_key.pem"
     SERVER_CA = f"key/ca_cert.pem"

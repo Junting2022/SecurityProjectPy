@@ -18,6 +18,7 @@ class ChatClient:
         self.handshake_number = {}
         self.stats = 0
         self.symmetric_key_number = {}
+        self.symmetric_key = None
 
     def connect(self):
 
@@ -87,9 +88,9 @@ class ChatClient:
         sorted_bytes = sorted(self.symmetric_key_number.values())
         # Concatenate the sorted bytes to form a single bytes object
         bytes_object = b''.join(sorted_bytes)
-        symmetric_key = hashlib.sha256(bytes_object).digest()
-        print(f"Symmetric key: {symmetric_key}")
-        self.handle_server()
+        self.symmetric_key = hashlib.sha256(bytes_object).digest()
+        print(f"Symmetric key: {self.symmetric_key}")
+        self.stats = 8
 
     def establish_symmetric_key(self):
         # step 6 : establish symmetric key
@@ -99,15 +100,24 @@ class ChatClient:
         second_chat_member_id = input("Enter the second chat member's ID: ")
         self.send_symmetric_number(first_chat_member_id, self.symmetric_key_number[self.client_id])
         self.send_symmetric_number(second_chat_member_id, self.symmetric_key_number[self.client_id])
-        # receive symmetric number from server
+        while self.stats != 8:
+            time.sleep(1)
+        # start chat with symmetric key
+        thread = threading.Thread(target=self.handle_server)
+        thread.start()
+        self.send_message()
 
     def handle_server(self):
+        print("ready to receive messages")
         while True:
             try:
-                msg = self.client.recv(1024).decode("utf-8")  # Receive messages from the server
-                if msg:
-                    sender_id, message = msg.split(":", 1)  # Extract sender id and message
-                    print(f"{sender_id}: {message}")
+                sender_id = self.client.recv(1024).decode("utf-8")  # Receive messages from the server
+                print(f"receive encrypt message from {sender_id}")
+                if sender_id:
+                    encrypted_msg = self.client.recv(2048)
+                    iv = self.client.recv(16)
+                    msg = decrypt_symmetric(encrypted_msg, self.symmetric_key, iv).decode("utf-8")
+                    print(f"{sender_id}: {msg}")
             except Exception as e:
                 print(f"Error: {e}")
                 self.client.close()
@@ -219,15 +229,29 @@ class ChatClient:
         self.client.send(encrypted_number + signature)
 
     def send_message(self):
-        while True:
-            recipient_id = input("Enter recipient id (A, B, or C): ")
-            message = input("Enter your message: ")
-            self.client.send(f"{recipient_id}:{message}".encode("utf-8"))  # Send message to the server
+        try:
+
+            while True:
+                recipient_id = input("Enter recipient id (A, B, or C): ")
+                message = input("Enter your message: ")
+                iv, encrypt_message = encrypt_symmetric(message.encode("utf-8"), self.symmetric_key)
+
+                self.client.send(recipient_id.encode("utf-8"))  # Send recipient id to the server
+                time.sleep(0.1)
+                self.client.send(
+                    len(encrypt_message).to_bytes(4, byteorder='big'))  # Send encrypted message length to the server
+                time.sleep(0.1)
+                self.client.send(encrypt_message)  # Send message to the server
+                time.sleep(0.1)
+                self.client.send(iv)  # Send iv to the server
+                print(f"Message sent to {recipient_id}")
+        except Exception as e:
+            print(f"Error: {e}")
 
 
 if __name__ == "__main__":
     IP_ADDRESS = "127.0.0.1"
-    PORT = 20002
+    PORT = 20005
     CLIENT_ID = input("Enter your client id (A, B, or C): ")
     CLIENT_CERT = f"key/{CLIENT_ID}_cert.pem"
     CLIENT_KEY = f"key/{CLIENT_ID}_key.pem"
