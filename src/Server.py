@@ -165,7 +165,7 @@ class Server:
         try:
             conn.send(encrypt_number + signature)
             self.clients[client_id]["stats"] = 3
-            print("step 3 done, you have send random number and signature")
+            print(f"step 3 done, you have send random number{number_one} and signature")
         except Exception as e:
             # Print the error message if sending fails
             print(f"Error sending encrypted data and signature: {e}")
@@ -194,7 +194,7 @@ class Server:
                 raise Exception("Invalid number")
             self.clients[client_id]["numbers"][2] = number_two
             self.clients[client_id]["stats"] = 4
-            print("step 4 done, you have verify number one and signature")
+            print(f"step 4 done, you have verify number {number_one} and signature, get number {number_two}")
         except Exception as e:
             print(f"Error: {e}")
 
@@ -222,7 +222,7 @@ class Server:
         try:
             conn.send(encrypt_number + signature)
             self.clients[client_id]["stats"] = 5
-            print("step 5 done, you have send number two and signature")
+            print(f"step 5 done, you have send number {number_two} and signature")
         except Exception as e:
             # Print the error message if sending fails
             print(f"Error sending encrypted data and signature: {e}")

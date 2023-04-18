@@ -19,6 +19,7 @@ class ChatClient:
         self.stats = 0
         self.symmetric_key_number = {}
         self.symmetric_key = None
+        self.group_members = []
 
     def connect(self):
 
@@ -100,12 +101,15 @@ class ChatClient:
         second_chat_member_id = input("Enter the second chat member's ID: ")
         self.send_symmetric_number(first_chat_member_id, self.symmetric_key_number[self.client_id])
         self.send_symmetric_number(second_chat_member_id, self.symmetric_key_number[self.client_id])
+        self.group_members.append(first_chat_member_id)
+        self.group_members.append(second_chat_member_id)
+        print(self.group_members)
         while self.stats != 8:
             time.sleep(1)
         # start chat with symmetric key
         thread = threading.Thread(target=self.handle_server)
         thread.start()
-        self.send_message()
+        self.broadcast()
 
     def handle_server(self):
         print("ready to receive messages")
@@ -163,7 +167,7 @@ class ChatClient:
                 raise Exception("Invalid Server signature")
             self.handshake_number[1] = number_one
             self.stats = 3
-            print("step 3 done, you have read random number and verify signature")
+            print(f"step 3 done, you have read random number{number_one} and verify signature")
         except Exception as e:
             print(f"Error: {e}")
 
@@ -186,7 +190,9 @@ class ChatClient:
             msg = encrypt_numbers + signature
             self.client.send(msg)
             self.stats = 4
-            print("step 4 done, you have send random number and signature")
+            print(
+                f"step 4 done, you have send random number {self.handshake_number[1]} {self.handshake_number[2]} and "
+                f"signature")
         except Exception as e:
             print(f"Error: {e}")
 
@@ -210,7 +216,7 @@ class ChatClient:
             if number_two != self.handshake_number[2]:
                 raise Exception("Invalid number")
             self.stats = 5
-            print("step 5 done, you have verify number two signature")
+            print(f"step 5 done, you have verify number {number_two} signature")
         except Exception as e:
             print(f"Error: {e}")
 
@@ -228,23 +234,29 @@ class ChatClient:
         self.client.send(recipient_id.encode("utf-8"))
         self.client.send(encrypted_number + signature)
 
-    def send_message(self):
+    def broadcast(self):
         try:
-
             while True:
-                recipient_id = input("Enter recipient id (A, B, or C): ")
                 message = input("Enter your message: ")
-                iv, encrypt_message = encrypt_symmetric(message.encode("utf-8"), self.symmetric_key)
+                self.send_message(self.group_members[0], message)
+                time.sleep(0.1)
+                self.send_message(self.group_members[1], message)
+        except Exception as e:
+            print(f"Error: {e}")
 
-                self.client.send(recipient_id.encode("utf-8"))  # Send recipient id to the server
-                time.sleep(0.1)
-                self.client.send(
-                    len(encrypt_message).to_bytes(4, byteorder='big'))  # Send encrypted message length to the server
-                time.sleep(0.1)
-                self.client.send(encrypt_message)  # Send message to the server
-                time.sleep(0.1)
-                self.client.send(iv)  # Send iv to the server
-                print(f"Message sent to {recipient_id}")
+    def send_message(self, recipient_id, message):
+        try:
+            iv, encrypt_message = encrypt_symmetric(message.encode("utf-8"), self.symmetric_key)
+            self.client.send(recipient_id.encode("utf-8"))  # Send recipient id to the server
+            time.sleep(0.1)
+            self.client.send(
+                len(encrypt_message).to_bytes(4, byteorder='big'))  # Send encrypted message length to the server
+            time.sleep(0.1)
+            self.client.send(encrypt_message)  # Send message to the server
+            time.sleep(0.1)
+            self.client.send(iv)  # Send iv to the server
+            time.sleep(0.1)
+            print(f"Message sent to {recipient_id}")
         except Exception as e:
             print(f"Error: {e}")
 
