@@ -116,9 +116,9 @@ class ChatClient:
         while True:
             try:
                 sender_id = self.client.recv(1024).decode("utf-8")  # Receive messages from the server
-                print(f"receive encrypt message from {sender_id}")
                 if sender_id:
                     encrypted_msg = self.client.recv(2048)
+                    print(f"receive encrypt message {encrypted_msg} from {sender_id}")
                     iv = self.client.recv(16)
                     msg = decrypt_symmetric(encrypted_msg, self.symmetric_key, iv).decode("utf-8")
                     print(f"{sender_id}: {msg}")
